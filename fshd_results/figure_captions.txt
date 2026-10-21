@@ -1,0 +1,18 @@
+01_interpolation_example: Crosses are estimated common-time values; circles are original measurements. Straight segments assume linear change; no extrapolation is used.
+
+02_FF_paired_changes: Mean absolute changes with 95% t confidence intervals for the shared cohort. Positive values indicate increasing FF or longer TUG. Tests use interpolated values without propagating interpolation uncertainty.
+
+02_TUG_paired_changes: Mean absolute changes with 95% t confidence intervals for the shared cohort. Positive values indicate increasing FF or longer TUG. Tests use interpolated values without propagating interpolation uncertainty.
+
+03_percentage_changes: Dots are subject percentage changes. Squares and bars show mean +/- sample SD, not confidence intervals. Mean/SD is a descriptive consistency statistic; it is not a reliability estimate.
+
+04_regression_Baseline: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+04_regression_T1: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+04_regression_T2: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+05_change_regression: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+06_diagnostics: Diagnostics concern within-subject differences. Q-Q reference line is diagnostic, not the scientific FF-TUG regression; its p-value is not an endpoint test.
+
