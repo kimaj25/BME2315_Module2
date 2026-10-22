@@ -1,0 +1,18 @@
+01_interpolation_example: Crosses are estimated common-time values; circles are original measurements. Straight segments assume linear change; no extrapolation is used.
+
+02_FF_paired_changes: Mean absolute changes across all three intervals with 95% t confidence intervals for the shared cohort. Positive values indicate increasing FF or longer TUG. Tests use interpolated values without propagating interpolation uncertainty.
+
+02_TUG_paired_changes: Mean absolute changes across all three intervals with 95% t confidence intervals for the shared cohort. Positive values indicate increasing FF or longer TUG. Tests use interpolated values without propagating interpolation uncertainty.
+
+04_regression_Baseline: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+04_regression_T1: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+04_regression_T2: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+05_change_regression_Baseline_to_T1: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+05_change_regression_T1_to_T2: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+
+05_change_regression_Baseline_to_T2: Each point represents one subject. Ordinary least-squares line with a pointwise 95% confidence band for the mean response, not a prediction interval. Equation uses the units on the axes.
+

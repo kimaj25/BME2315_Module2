@@ -1,371 +1,462 @@
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats import pearsonr
+from scipy import stats
+from IPython.display import display
 
-# Load the dataset
 df = pd.read_csv("C:\\Users\\aerin\\OneDrive\\Desktop\\COMP BME 2315 Fall 2026\\Module 2\\BME2315_Module2\\Module2_FSHD_Dataset.csv")
 
-# Display dataset information
-print("Number of subjects:", df["subject_id"].nunique())
-print("Dataset shape:", df.shape)
+visits = ["baseline", "y1", "y2"]
 
-df.head()
+time_cols = [f"lag_months_{v}" for v in visits]
 
-
-# Define visits and their corresponding columns
-visits = {
-    "Baseline": {
-        "ff": "ff_baseline_R",
-        "tug": "tug_time_baseline",
-        "months": "lag_months_baseline"
-    },
-    "Year 1": {
-        "ff": "ff_y1_R",
-        "tug": "tug_time_y1",
-        "months": "lag_months_y1"
-    },
-    "Year 2": {
-        "ff": "ff_y2_R",
-        "tug": "tug_time_y2",
-        "months": "lag_months_y2"
-    }
+measure_cols = {
+    "FF": [f"ff_{v}_R" for v in visits],
+    "TUG": [f"tug_time_{v}" for v in visits],
 }
 
-# Create a longitudinal dataset
-long_data = []
+target_times = np.array([0.0, 11.15, 22.13])
+time_labels = ["Baseline", "T1", "T2"]
 
-for _, subject in df.iterrows():
-    for visit, columns in visits.items():
-        long_data.append({
-            "subject_id": subject["subject_id"],
-            "visit": visit,
-            "months": subject[columns["months"]],
-            "fat_fraction": subject[columns["ff"]],
-            "tug_time": subject[columns["tug"]]
-        })
+measure_names = {
+    "FF": "Right-leg fat fraction",
+    "TUG": "TUG time",
+}
 
-long_df = pd.DataFrame(long_data)
+axis_labels = {
+    "FF": "Right-leg fat fraction (%)",
+    "TUG": "TUG time (s)",
+}
 
-# Sort by subject and actual time
-long_df = long_df.sort_values(
-    ["subject_id", "months"]
-).reset_index(drop=True)
-
-print(long_df.head(9))
+print(f"Number of subjects: {len(df)}")
+display(df.head())
 
 
-
-# Plot individual subject trajectories
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-for subject_id, group in long_df.groupby("subject_id"):
-
-    # Right-limb fat fraction
-    axes[0].plot(
-        group["months"],
-        group["fat_fraction"],
-        marker="o",
-        alpha=0.4
-    )
-
-    # TUG time
-    axes[1].plot(
-        group["months"],
-        group["tug_time"],
-        marker="o",
-        alpha=0.4
-    )
-
-axes[0].set_title("Right-Limb Fat Fraction Over Time")
-axes[0].set_xlabel("Months Since Baseline")
-axes[0].set_ylabel("Fat Fraction")
-
-axes[1].set_title("TUG Time Over Time")
-axes[1].set_xlabel("Months Since Baseline")
-axes[1].set_ylabel("TUG Time (seconds)")
-
-for ax in axes:
-    ax.grid(alpha=0.3)
-
-plt.tight_layout()
-plt.show()
-
-
-# Common time points: baseline through 24 months
-common_months = np.arange(0, 25, 1)
-
-interpolated_data = []
-
-for subject_id, group in long_df.groupby("subject_id"):
-
-    group = group.sort_values("months")
-
-    for variable in ["fat_fraction", "tug_time"]:
-
-        # Keep only valid measurements
-        valid = group[["months", variable]].dropna()
-        valid = valid.drop_duplicates(subset="months")
-
-        # Need at least 2 points for interpolation
-        if len(valid) < 2:
-            continue
-
-        x = valid["months"].to_numpy()
-        y = valid[variable].to_numpy()
-
-        # Interpolate only within observed time range
-        valid_months = common_months[
-            (common_months >= x.min()) &
-            (common_months <= x.max())
-        ]
-
-        estimated_values = np.interp(
-            valid_months, x, y
-        )
-
-        for month, value in zip(
-            valid_months, estimated_values
-        ):
-            interpolated_data.append({
-                "subject_id": subject_id,
-                "months": month,
-                "variable": variable,
-                "value": value
-            })
-
-interp_df = pd.DataFrame(interpolated_data)
-
-# Convert back to paired FF and TUG columns
-interp_wide = interp_df.pivot(
-    index=["subject_id", "months"],
-    columns="variable",
-    values="value"
-).reset_index()
-
-# Only retain months with both measurements
-interp_wide = interp_wide.dropna(
-    subset=["fat_fraction", "tug_time"]
+required_cols = (
+    ["subject_id"]
+    + time_cols
+    + measure_cols["FF"]
+    + measure_cols["TUG"]
 )
 
-print(interp_wide.head(10))
+missing_cols = [col for col in required_cols if col not in df.columns]
+if missing_cols:
+    raise ValueError(f"Missing required columns: {missing_cols}")
 
+if df["subject_id"].isna().any():
+    raise ValueError("Some subjects have no subject_id.")
 
+if df["subject_id"].duplicated().any():
+    raise ValueError("Duplicate subject IDs found.")
 
-# Select one subject as an example
-subject_id = df["subject_id"].iloc[0]
+# Convert measurement and time columns to numbers.
+# Missing values remain NaN.
+for col in required_cols[1:]:
+    df[col] = pd.to_numeric(df[col], errors="raise")
 
-original = long_df[
-    long_df["subject_id"] == subject_id
-]
+availability = []
 
-interpolated = interp_wide[
-    interp_wide["subject_id"] == subject_id
-]
+for visit in visits:
+    ff_col = f"ff_{visit}_R"
+    tug_col = f"tug_time_{visit}"
 
-fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-
-variables = [
-    ("fat_fraction", "Right-Limb Fat Fraction"),
-    ("tug_time", "TUG Time (seconds)")
-]
-
-for ax, (variable, title) in zip(axes, variables):
-
-    ax.plot(
-        interpolated["months"],
-        interpolated[variable],
-        "-",
-        label="Interpolated",
-        color="steelblue"
-    )
-
-    ax.scatter(
-        original["months"],
-        original[variable],
-        color="darkorange",
-        s=65,
-        label="Observed",
-        zorder=3
-    )
-
-    ax.set_title(title + " - " + str(subject_id))
-    ax.set_xlabel("Months Since Baseline")
-    ax.set_ylabel(title)
-    ax.legend()
-    ax.grid(alpha=0.3)
-
-plt.tight_layout()
-plt.show()
-
-
-
-
-correlation_results = []
-
-for subject_id, group in long_df.groupby("subject_id"):
-
-    # Use actual paired observations, not interpolated points
-    paired = group[
-        ["fat_fraction", "tug_time"]
-    ].dropna()
-
-    # At least 3 paired observations are needed
-    if len(paired) < 3:
-        continue
-
-    # Check that both variables vary
-    if (
-        paired["fat_fraction"].nunique() < 2 or
-        paired["tug_time"].nunique() < 2
-    ):
-        continue
-
-    r, p = pearsonr(
-        paired["fat_fraction"],
-        paired["tug_time"]
-    )
-
-    correlation_results.append({
-        "subject_id": subject_id,
-        "pearson_r": r,
-        "p_value": p,
-        "n_observations": len(paired)
+    availability.append({
+        "Visit": visit,
+        "FF available": df[ff_col].notna().sum(),
+        "TUG available": df[tug_col].notna().sum(),
+        "Both available": df[[ff_col, tug_col]].notna().all(axis=1).sum(),
     })
 
-correlation_df = pd.DataFrame(correlation_results)
+display(pd.DataFrame(availability))
 
-print(correlation_df)
-
-
-
-# Sort subjects by correlation strength
-correlation_sorted = correlation_df.sort_values(
-    "pearson_r"
+# Flag duplicate recorded visit times.
+duplicate_time_mask = df[time_cols].apply(
+    lambda row: row.dropna().duplicated().any(),
+    axis=1
 )
 
-plt.figure(figsize=(12, 7))
+timing_issues = df.loc[duplicate_time_mask].copy()
 
-plt.barh(
-    correlation_sorted["subject_id"],
-    correlation_sorted["pearson_r"],
-    color="steelblue"
+print("Subjects excluded because of ambiguous visit times:")
+display(
+    timing_issues[
+        ["subject_id"] + time_cols + measure_cols["TUG"]
+    ]
 )
 
-plt.axvline(0, color="black", linewidth=1)
+# Preserve the original data and filter the analysis copy.
+df_original = df.copy()
+df = df.loc[~duplicate_time_mask].copy()
 
-plt.xlabel("Pearson Correlation Coefficient (r)")
-plt.ylabel("Subject ID")
-plt.title("Individual Correlations: Right-Limb FF vs. TUG")
-
-plt.xlim(-1.1, 1.1)
-plt.grid(axis="x", alpha=0.3)
-
-plt.tight_layout()
-plt.show()
+print(f"Subjects remaining after timing check: {len(df)}")
 
 
 
-# Extract baseline measurements
-baseline = interp_wide[
-    interp_wide["months"] == 0
-][["subject_id", "fat_fraction", "tug_time"]]
 
-baseline = baseline.rename(columns={
-    "fat_fraction": "baseline_ff",
-    "tug_time": "baseline_tug"
-})
 
-# Extract follow-up measurements at months 12 and 24
-followup = interp_wide[
-    interp_wide["months"].isin([12, 24])
-].copy()
 
-# Merge with baseline values
-change_df = followup.merge(
-    baseline,
-    on="subject_id",
-    how="inner"
+
+def get_observed_values(row, measure):
+    """Return this subject's valid times and measurements in time order."""
+    t = row[time_cols].to_numpy(dtype=float)
+    y = row[measure_cols[measure]].to_numpy(dtype=float)
+
+    valid = np.isfinite(t) & np.isfinite(y)
+    t = t[valid]
+    y = y[valid]
+
+    order = np.argsort(t)
+    t = t[order]
+    y = y[order]
+
+    if len(t) > 1 and np.any(np.diff(t) <= 0):
+        raise ValueError(
+            f"Repeated visit times for subject {row['subject_id']}"
+        )
+
+    return t, y
+
+
+def interpolate_measure(row, measure):
+    """Estimate common-time values without extrapolating."""
+    t, y = get_observed_values(row, measure)
+    estimates = np.full(len(target_times), np.nan)
+
+    # Preserve a measurement exactly at a target, even with one observation.
+    for j, target in enumerate(target_times):
+        exact = np.flatnonzero(np.isclose(t, target, rtol=0, atol=1e-8))
+
+        if len(exact):
+            estimates[j] = y[exact[0]]
+        elif len(t) >= 2 and t[0] < target < t[-1]:
+            estimates[j] = np.interp(target, t, y)
+
+    return estimates
+
+
+aligned = pd.DataFrame({"subject_id": df["subject_id"]})
+
+for measure in ["FF", "TUG"]:
+    estimates = np.vstack([
+        interpolate_measure(row, measure)
+        for _, row in df.iterrows()
+    ])
+
+    for j, label in enumerate(time_labels):
+        aligned[f"{measure}_{label}"] = estimates[:, j]
+
+display(aligned.head())
+
+analysis_cols = [
+    f"{measure}_{label}"
+    for measure in ["FF", "TUG"]
+    for label in time_labels
+]
+
+aligned["Included"] = aligned[analysis_cols].notna().all(axis=1)
+
+cohort = aligned.loc[aligned["Included"]].copy()
+
+print(f"Total subjects: {len(df)}")
+print(f"Included in the shared cohort: {len(cohort)}")
+print(f"Excluded from the shared cohort: {len(df) - len(cohort)}")
+
+excluded = aligned.loc[~aligned["Included"], ["subject_id"]].copy()
+
+excluded["Unavailable values"] = aligned.loc[
+    ~aligned["Included"], analysis_cols
+].apply(
+    lambda row: ", ".join(row.index[row.isna()]),
+    axis=1
 )
 
-# Calculate changes relative to baseline
-change_df["delta_ff"] = (
-    change_df["fat_fraction"] -
-    change_df["baseline_ff"]
-)
+display(excluded)
 
-change_df["delta_tug"] = (
-    change_df["tug_time"] -
-    change_df["baseline_tug"]
-)
+# Identify included subjects whose missing middle visit was bridged.
+included_original = df[df["subject_id"].isin(cohort["subject_id"])]
 
-print(change_df[
-    ["subject_id", "months", "delta_ff", "delta_tug"]
-].head(10))
+for measure, cols in measure_cols.items():
+    bridged = (
+        included_original[cols[0]].notna()
+        & included_original[cols[1]].isna()
+        & included_original[cols[2]].notna()
+    )
+    print(f"{measure}: {bridged.sum()} subjects with a missing middle value")
 
 
+for measure in ["FF", "TUG"]:
+    fig, axes = plt.subplots(
+        6, 5, figsize=(16, 15), sharex=True
+    )
+    axes = axes.ravel()
 
+    for ax, subject_id in zip(axes, cohort["subject_id"]):
+        row = df.loc[df["subject_id"] == subject_id].iloc[0]
+        estimates = cohort.loc[
+            cohort["subject_id"] == subject_id
+        ].iloc[0]
 
-#Correlate changes in right-limb fat fraction with changes in TUG time at 12 and 24 months
-fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+        t, y = get_observed_values(row, measure)
 
-for ax, month in zip(axes, [12, 24]):
+        ax.plot(t, y, "o-", color="steelblue", label="Observed")
+        ax.scatter(
+            target_times,
+            [estimates[f"{measure}_{label}"] for label in time_labels],
+            color="darkorange",
+            marker="x",
+            s=55,
+            zorder=3,
+            label="Common-time value"
+        )
 
-    subset = change_df[
-        change_df["months"] == month
-    ].dropna(subset=["delta_ff", "delta_tug"])
+        ax.set_title(str(subject_id), fontsize=10)
+        ax.grid(alpha=0.2)
 
-    ax.scatter(
-        subset["delta_ff"],
-        subset["delta_tug"],
-        alpha=0.7,
-        color="steelblue"
+    for ax in axes[len(cohort):]:
+        ax.set_visible(False)
+
+    handles, legend_labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, legend_labels, loc="upper right")
+    fig.supxlabel("Months since baseline")
+    fig.supylabel(axis_labels[measure])
+    fig.suptitle(
+        f"{measure_names[measure]}: observed and common-time values",
+        fontsize=16
     )
 
-    if (
-        len(subset) >= 3 and
-        subset["delta_ff"].nunique() > 1 and
-        subset["delta_tug"].nunique() > 1
-    ):
-        r, p = pearsonr(
-            subset["delta_ff"],
-            subset["delta_tug"]
-        )
+    fig.tight_layout(rect=[0.02, 0.02, 1, 0.95])
+    plt.show()
 
-        # Regression line for visualization
-        slope, intercept = np.polyfit(
-            subset["delta_ff"],
-            subset["delta_tug"],
-            1
-        )
 
-        x_line = np.linspace(
-            subset["delta_ff"].min(),
-            subset["delta_ff"].max(),
-            100
-        )
 
-        ax.plot(
-            x_line,
-            slope * x_line + intercept,
-            color="darkorange"
-        )
+descriptive_rows = []
 
-        ax.set_title(
-            f"Month {month}: r={r:.3f}, p={p:.3f}, n={len(subset)}"
-        )
+for measure in ["FF", "TUG"]:
+    for label, month in zip(time_labels, target_times):
+        values = cohort[f"{measure}_{label}"]
 
-        print(
-            f"Month {month}: r={r:.3f}, "
-            f"p={p:.4f}, n={len(subset)}"
-        )
+        descriptive_rows.append({
+            "Measure": measure,
+            "Time": label,
+            "Month": month,
+            "n": len(values),
+            "Mean": values.mean(),
+            "SD": values.std(ddof=1),
+            "Median": values.median(),
+            "Minimum": values.min(),
+            "Maximum": values.max(),
+        })
 
-    ax.set_xlabel("Change in Right-Limb Fat Fraction")
-    ax.set_ylabel("Change in TUG Time (seconds)")
-    ax.axhline(0, color="gray", linestyle="--", alpha=0.5)
-    ax.axvline(0, color="gray", linestyle="--", alpha=0.5)
-    ax.grid(alpha=0.3)
+descriptive_table = pd.DataFrame(descriptive_rows)
+display(descriptive_table.round(3))
+
+
+
+change_rows = []
+
+for measure in ["FF", "TUG"]:
+    start = cohort[f"{measure}_T1"]
+    end = cohort[f"{measure}_T2"]
+
+    change = end - start
+    pct_change = 100 * change / start.where(start != 0)
+
+    cohort[f"{measure}_change"] = change
+    cohort[f"{measure}_pct_change"] = pct_change
+
+    # Paired t-test on common-time values.
+    test = stats.ttest_rel(end, start)
+
+    # 95% confidence interval for mean absolute change.
+    n = len(change)
+    margin = stats.t.ppf(0.975, df=n - 1) * stats.sem(change)
+    mean_change = change.mean()
+
+    mean_pct = pct_change.mean()
+    sd_pct = pct_change.std(ddof=1)
+
+    change_rows.append({
+        "Measure": measure,
+        "n": n,
+        "Mean absolute change": mean_change,
+        "95% CI lower": mean_change - margin,
+        "95% CI upper": mean_change + margin,
+        "Mean % change": mean_pct,
+        "SD of % change": sd_pct,
+        "Mean % / SD": mean_pct / sd_pct if sd_pct > 0 else np.nan,
+        "% with an increase": 100 * (change > 0).mean(),
+        "t statistic": test.statistic,
+        "p value": test.pvalue,
+    })
+
+change_table = pd.DataFrame(change_rows)
+display(change_table.round(4))
+
+
+
+fig, axes = plt.subplots(2, 2, figsize=(11, 8))
+
+for j, measure in enumerate(["FF", "TUG"]):
+    differences = cohort[f"{measure}_change"]
+
+    axes[0, j].hist(
+        differences, bins=8,
+        color="steelblue", edgecolor="white"
+    )
+    axes[0, j].axvline(0, color="black", linestyle="--")
+    axes[0, j].set_title(f"{measure}: T2 minus T1")
+    axes[0, j].set_xlabel(
+        "FF change (percentage points)" if measure == "FF"
+        else "TUG change (s)"
+    )
+    axes[0, j].set_ylabel("Number of subjects")
+
+    stats.probplot(differences, dist="norm", plot=axes[1, j])
+    axes[1, j].set_title(f"{measure}: Q–Q plot of paired differences")
 
 plt.tight_layout()
 plt.show()
+
+# Compare percentage changes on the same scale.
+fig, ax = plt.subplots(figsize=(7, 5))
+rng = np.random.default_rng(42)
+
+for position, measure in enumerate(["FF", "TUG"]):
+    values = cohort[f"{measure}_pct_change"].dropna()
+
+    ax.scatter(
+        position + rng.uniform(-0.08, 0.08, len(values)),
+        values,
+        alpha=0.65
+    )
+    ax.errorbar(
+        position, values.mean(),
+        yerr=values.std(ddof=1),
+        fmt="ks", capsize=7
+    )
+
+ax.axhline(0, color="gray", linestyle="--")
+ax.set_xticks([0, 1], ["Right-leg FF", "TUG"])
+ax.set_ylabel("Change from T1 to T2 (%)")
+ax.set_title("Individual percentage changes and mean ± SD")
+plt.tight_layout()
+plt.show()
+
+
+def regression_summary(x, y):
+    """Summarize a regression using valid paired observations."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    valid = np.isfinite(x) & np.isfinite(y)
+    x, y = x[valid], y[valid]
+
+    if len(x) < 3 or np.ptp(x) == 0 or np.ptp(y) == 0:
+        return {
+            "n": len(x), "Pearson r": np.nan,
+            "R squared": np.nan, "Slope": np.nan,
+            "Intercept": np.nan, "p value": np.nan
+        }
+
+    fit = stats.linregress(x, y)
+
+    return {
+        "n": len(x),
+        "Pearson r": fit.rvalue,
+        "R squared": fit.rvalue**2,
+        "Slope": fit.slope,
+        "Intercept": fit.intercept,
+        "p value": fit.pvalue,
+    }
+
+
+correlation_rows = []
+fig, axes = plt.subplots(
+    1, 3, figsize=(15, 4), sharex=True, sharey=True
+)
+
+for ax, label, month in zip(axes, time_labels, target_times):
+    x = cohort[f"FF_{label}"]
+    y = cohort[f"TUG_{label}"]
+
+    result = regression_summary(x, y)
+    correlation_rows.append({"Month": month, **result})
+
+    ax.scatter(x, y, alpha=0.75)
+    grid = np.linspace(x.min(), x.max(), 100)
+    ax.plot(
+        grid,
+        result["Intercept"] + result["Slope"] * grid,
+        color="red"
+    )
+    ax.set_title(
+        f"{month:g} months: r = {result['Pearson r']:.2f}"
+    )
+    ax.set_xlabel("Right-leg fat fraction (%)")
+
+axes[0].set_ylabel("TUG time (s)")
+plt.tight_layout()
+plt.show()
+
+correlation_table = pd.DataFrame(correlation_rows)
+display(correlation_table.round(4))
+
+
+
+change_correlation = regression_summary(
+    cohort["FF_change"],
+    cohort["TUG_change"]
+)
+
+display(pd.DataFrame([change_correlation]).round(4))
+
+x = cohort["FF_change"]
+y = cohort["TUG_change"]
+
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.scatter(x, y, alpha=0.8)
+
+grid = np.linspace(x.min(), x.max(), 100)
+ax.plot(
+    grid,
+    change_correlation["Intercept"]
+    + change_correlation["Slope"] * grid,
+    color="red"
+)
+
+ax.axhline(0, color="gray", linewidth=0.8)
+ax.axvline(0, color="gray", linewidth=0.8)
+ax.set_xlabel("Right-leg FF change (percentage points)")
+ax.set_ylabel("TUG change (s)")
+ax.set_title("Association between changes: 11.15 to 22.13 months")
+plt.tight_layout()
+plt.show()
+
+
+
+subject_rows = []
+
+for _, row in df.iterrows():
+    ff = row[measure_cols["FF"]].to_numpy(dtype=float)
+    tug = row[measure_cols["TUG"]].to_numpy(dtype=float)
+    t = row[time_cols].to_numpy(dtype=float)
+
+    valid = np.isfinite(ff) & np.isfinite(tug) & np.isfinite(t)
+    n = int(valid.sum())
+
+    r = np.nan
+
+    # Two points would give a trivial correlation of +1 or -1.
+    # Require three original paired observations.
+    if n == 3 and np.ptp(ff[valid]) > 0 and np.ptp(tug[valid]) > 0:
+        r = stats.pearsonr(ff[valid], tug[valid]).statistic
+
+    subject_rows.append({
+        "subject_id": row["subject_id"],
+        "Original paired observations": n,
+        "Descriptive Pearson r": r,
+    })
+
+subject_correlation_table = pd.DataFrame(subject_rows)
+display(subject_correlation_table.round(3))
